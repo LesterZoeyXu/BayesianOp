@@ -108,9 +108,11 @@ class UCB(AcquisitionFunction):
     def __init__(self, alpha: float = 0.5, **kwargs):
         """Upper Confidence Bound
 
-        \alpha(x) = m(x) + \alpha * \sigma(x),
+        \alpha(x) = -m(x) + \alpha * \sigma(x),
 
-        where m(x) the predicted value and \sigma(x) is the uncertainty of the prediction
+        where m(x) the predicted value and \sigma(x) is the uncertainty of the prediction.
+        Since `_predict` always returns m(x) for minimization (negating it for maximization),
+        m(x) is negated here such that the criterion is to be maximized, as all others.
         """
         super().__init__(**kwargs)
         self.alpha = alpha
@@ -130,7 +132,7 @@ class UCB(AcquisitionFunction):
         y_hat, sd = self._predict(X)
 
         try:
-            f_value = y_hat + self.alpha * sd
+            f_value = -y_hat + self.alpha * sd
             if n_sample == 1:
                 f_value = sum(f_value)
         except Exception:  # in case of numerical errors
@@ -140,7 +142,7 @@ class UCB(AcquisitionFunction):
             y_dx, sd2_dx = self._gradient(X)
             sd_dx = sd2_dx / (2.0 * sd)
             try:
-                f_dx = y_dx + self.alpha * sd_dx
+                f_dx = -y_dx + self.alpha * sd_dx
             except Exception:
                 f_dx = np.zeros((len(X[0]), 1))
             return f_value, f_dx
