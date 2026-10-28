@@ -67,9 +67,11 @@ class ParallelBO(BO):
         self,
         n_point: int = 3,
         acquisition_fun: str = "MGFI",
-        acquisition_par: Dict = {"t": 2},
+        acquisition_par: Dict = None,
         **kwargs,
     ):
+        # NOTE: copy it since `self._acquisition_par` is mutated in place, e.g., by `AnnealingBO`
+        acquisition_par = {"t": 2} if acquisition_par is None else dict(acquisition_par)
         super().__init__(
             n_point=n_point,
             acquisition_fun=acquisition_fun,
@@ -93,7 +95,7 @@ class ParallelBO(BO):
         else:
             raise NotImplementedError
 
-        _criterion = getattr(AcquisitionFunction, self._acquisition_fun)(model=kwargs["model"])
+        _criterion = getattr(AcquisitionFunction, self._acquisition_fun)(model=self.model)
         if self._par_name not in self._acquisition_par:
             self._acquisition_par[self._par_name] = getattr(_criterion, self._par_name)
 
@@ -143,7 +145,6 @@ class AnnealingBO(ParallelBO):
         self._acquisition_callbacks += [callback]
 
 
-# TODO: write test file for this class
 class SelfAdaptiveBO(ParallelBO):
     def __init__(self, *argv, **kwargs):
         super().__init__(*argv, **kwargs)
@@ -155,7 +156,8 @@ class SelfAdaptiveBO(ParallelBO):
         N = int(n_point / 2)
 
         for _ in range(n_point):
-            _t = np.exp(self._acquisition_par["t"] * np.random.randn())
+            # log-normal mutation centered at the current `t`
+            _t = self._sampler(self._acquisition_par)
             _t_list.append(_t)
             _acquisition_par = copy(self._acquisition_par)
             _acquisition_par.update({"t": _t})
@@ -169,7 +171,9 @@ class SelfAdaptiveBO(ParallelBO):
             __ = [list(self._argmax_restart(_, logger=self.logger)) for _ in criteria]
 
         # NOTE: this adaptation is different from what I did in the LeGO paper..
-        idx = np.argsort(__[1])[::-1][:N]
+        # `__` holds one `(candidate, acquisition value)` pair per sampled `t`
+        values = [v for _, v in __]
+        idx = np.argsort(values)[::-1][:N]
         self._acquisition_par["t"] = np.mean([_t_list[i] for i in idx])
         return tuple(zip(*__))
 

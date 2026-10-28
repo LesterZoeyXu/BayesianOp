@@ -6,7 +6,9 @@ sys.path.insert(0, "./")
 import numpy as np
 import pytest
 
-from bayes_optim import BO, ParallelBO
+from bayes_optim import BO, AnnealingBO, ParallelBO
+from bayes_optim.acquisition.optim import argmax_restart
+from bayes_optim.bayes_opt import SelfAdaptiveBO
 from bayes_optim.search_space import (
     BoolSpace,
     DiscreteSpace,
@@ -291,3 +293,41 @@ def test_mix_space(eval_type):
     print("xopt: {}".format(xopt))
     print("fopt: {}".format(fopt))
     print("stop criteria: {}".format(stop_dict))
+
+
+def test_parallel_bo_acquisition_par_not_shared():
+    space = RealSpace([-5, 5]) * 2
+    fitness = lambda x: np.sum(np.asarray(x) ** 2)
+    opt1 = AnnealingBO(
+        search_space=space, obj_fun=fitness, model=RandomForest(levels=space.levels), DoE_size=3, max_FEs=9
+    )
+    opt1.run()
+    t = opt1._acquisition_par["t"]
+    assert t < 2  # the temperature has been annealed
+
+    opt2 = AnnealingBO(
+        search_space=space, obj_fun=fitness, model=RandomForest(levels=space.levels), DoE_size=3, max_FEs=9
+    )
+    assert opt1._acquisition_par is not opt2._acquisition_par
+    assert opt1._acquisition_par["t"] == t
+    assert opt2._acquisition_par["t"] == 2
+
+
+def test_self_adaptive_bo():
+    space = RealSpace([-5, 5]) * 2
+    opt = SelfAdaptiveBO(
+        search_space=space,
+        obj_fun=lambda x: np.sum(np.asarray(x) ** 2),
+        model=RandomForest(levels=space.levels),
+        DoE_size=3,
+        max_FEs=12,
+    )
+    opt.run()
+    assert opt.eval_count == 12
+
+
+def test_argmax_restart_without_logger():
+    # falling back from BFGS to MIES on a non-continuous space should not require a logger
+    space = IntegerSpace([0, 5]) * 2
+    xopt, fopt = argmax_restart(lambda x: -np.sum(np.asarray(x) ** 2), space, eval_budget=50, n_restart=1)
+    assert len(xopt) == 2

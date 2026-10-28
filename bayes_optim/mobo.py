@@ -190,6 +190,9 @@ class MOBO_qEHVI(BaseMOBO):
     """qEHVI (q-point Expected Hypervolume Improvement)"""
 
     def __init__(self, *args, **kwargv):
+        # TODO: the `qEHVI` acquisition function and the batched constraint handling in
+        # `_batch_arg_max_acquisition` are not implemented yet
+        raise NotImplementedError("MOBO_qEHVI is not implemented yet; use `MOBO` instead")
         super().__init__(*args, **kwargv)
         if self._acquisition_fun != "qEHVI":
             self._acquisition_fun = "qEHVI"

@@ -28,29 +28,47 @@ cd Bayesian-Optimization && python setup.py install --user
 For real-valued search variables, the simplest usage is via the `fmin` function:
 
 ```python
+import numpy as np
 from bayes_optim import fmin
 
 def f(x):
-  return sum(x ** 2)
+    x = np.asarray(x)  # candidate solutions are passed in as Python lists
+    return np.sum(x ** 2)
 
-minimum = fmin(f, [-5] * 2, [5] * 2, max_FEs=30, seed=42)
+xopt, fopt, n_iter, n_eval, history = fmin(f, [-5] * 2, [5] * 2, max_FEs=30, seed=42)
 ```
 
 And you could also have much finer control over most ingredients of BO, e.g., the surrogate
 model and acquisition functions. Please see the example below:
 
 ```python
+import numpy as np
 from bayes_optim import BO, RealSpace
-from bayes_optim.Surrogate import GaussianProcess
+from bayes_optim.surrogate import GaussianProcess, trend
+
+def fitness(x):
+    x = np.asarray(x)
+    return np.sum(x ** 2)
 
 dim = 5
-space = RealSpace([-5, 5]) * dim  # create the search space
+lb, ub = -5, 5
+space = RealSpace([lb, ub]) * dim  # create the search space
 
 # hyperparameters of the GPR model
-thetaL = 1e-10 * (ub - lb) * np.ones(dim)
-thetaU = 10 * (ub - lb) * np.ones(dim)
+thetaL = 1e-3 * (ub - lb) * np.ones(dim)
+thetaU = 1e3 * (ub - lb) * np.ones(dim)
 model = GaussianProcess(                # create the GPR model
-  thetaL=thetaL, thetaU=thetaU
+    mean=trend.constant_trend(dim),
+    corr="matern",
+    thetaL=thetaL,
+    thetaU=thetaU,
+    nugget=1e-6,
+    noise_estim=False,
+    optimizer="BFGS",
+    wait_iter=3,
+    random_start=2 * dim,
+    likelihood="concentrated",
+    eval_budget=100 * dim,
 )
 
 opt = BO(
@@ -61,7 +79,7 @@ opt = BO(
     max_FEs=50,                         # maximal function evaluation
     verbose=True
 )
-opt.run()
+xopt, fopt, stop_dict = opt.run()
 ```
 
 For more detailed usage and exmaples, please check out our [wiki page](https://github.com/wangronin/Bayesian-Optimization/wiki).
@@ -76,17 +94,17 @@ This implementation differs from alternative packages/libraries in the following
 
 ## Project Structure
 
-* `bayes-optim/SearchSpace.py`: implementation of the search/decision space.
-* `bayes-optim/base.py`: the base class of Bayesian Optimization.
-* `bayes-optim/AcquisitionFunction.py`: the implemetation of acquisition functions (see below for the list of implemented ones).
-* `bayes-optim/Surrogate`: we implemented the Gaussian Process Regression (GPR) and Random Forest (RF).
-* `bayes-optim/BayesOpt.py` contains several BO variants:
+* `bayes_optim/search_space/`: implementation of the search/decision space.
+* `bayes_optim/base.py`: the base class of Bayesian Optimization.
+* `bayes_optim/acquisition/`: the implemetation of acquisition functions (see below for the list of implemented ones).
+* `bayes_optim/surrogate/`: we implemented the Gaussian Process Regression (GPR) and Random Forest (RF).
+* `bayes_optim/bayes_opt.py` contains several BO variants:
   * `BO`: noiseless + sequential
   * `ParallelBO`: noiseless + parallel (a.k.a. batch-sequential)
   * `AnnealingBO`: noiseless + parallel + annealling [WEB18]
   * `SelfAdaptiveBO`: noiseless + parallel + self-adaptive [WEB19]
   * `NoisyBO`: noisy + parallel
-* `bayes-optim/Extension.py` is meant to include the lastest developments that are not extensively tested:
+* `bayes_optim/extension.py` is meant to include the lastest developments that are not extensively tested:
   * `PCABO`: noiseless + parallel + PCA-assisted dimensionality reduction [RaponiWBBD20] **[Under Construction]**
   * `MultiAcquisitionBO`: noiseless + parallelization with multiple different acquisition functions **[Under Construction]**
 

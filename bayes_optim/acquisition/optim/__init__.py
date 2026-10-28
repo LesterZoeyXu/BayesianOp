@@ -69,7 +69,8 @@ def argmax_restart(
     wait_count = 0
     if not isinstance(search_space, RealSpace) and optimizer == "BFGS":
         optimizer = "MIES"
-        logger.warning("L-BFGS-B can only be applied on continuous search space")
+        if logger is not None:
+            logger.warning("L-BFGS-B can only be applied on continuous search space")
 
     for iteration in range(n_restart):
         x0 = search_space.sample(N=1, method="uniform")[0]
