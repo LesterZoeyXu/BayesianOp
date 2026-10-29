@@ -421,6 +421,20 @@ class GaussianProcess(BaseEstimator, RegressorMixin):
         self.fit(X, y)
         return self
 
+    def _signal_ratio(self):
+        """The training correlation matrix is normalized by the total variance, i.e.,
+        `R = alpha * R0 + (1 - alpha) * I` with `alpha = sigma2 / (sigma2 + noise_var)`,
+        such that the cross-correlation to the training points has to be `alpha * r0`.
+
+        Returns
+        -------
+        alpha : float
+        total_var : ndarray
+            the total variance `sigma2 + noise_var`
+        """
+        total_var = self.sigma2 + self.noise_var
+        return float(np.ravel(self.sigma2 / total_var)[0]), total_var
+
     def predict(self, X, eval_MSE=False, batch_size=None):
         """
         This function evaluates the Gaussian Process model at x.
@@ -485,7 +499,8 @@ class GaussianProcess(BaseEstimator, RegressorMixin):
             # TODO: remove calculations of distances from here
             dx = l1_cross_distances(X, Y=self.X)
             # Get meanession function and correlation
-            r = self.corr(self.theta_, dx).reshape(n_eval, n_samples)
+            alpha, total_var = self._signal_ratio()
+            r = alpha * self.corr(self.theta_, dx).reshape(n_eval, n_samples)
             # Predictor
             y = (self.mean(X) + r.dot(self.gamma)).reshape(n_eval, n_targets)
 
@@ -499,9 +514,10 @@ class GaussianProcess(BaseEstimator, RegressorMixin):
                 else:  # simple Kriging
                     u = np.zeros((1, n_eval))
 
+                # NOTE: this is the MSE of the latent function, i.e., excluding the noise
                 MSE = np.dot(
-                    (1.0 - (rt**2.0).sum(axis=0) + (u**2.0).sum(axis=0)).reshape(n_eval, -1),
-                    self.sigma2.reshape(1, -1),
+                    (alpha - (rt**2.0).sum(axis=0) + (u**2.0).sum(axis=0)).reshape(n_eval, -1),
+                    np.reshape(total_var, (1, -1)),
                 )
                 # MSE = np.sqrt((MSE ** 2.0).sum(axis=0) / n_targets)
 
@@ -556,6 +572,8 @@ class GaussianProcess(BaseEstimator, RegressorMixin):
         d = l1_cross_distances(x, Y=self.X)
         r = self.corr(self.theta_, d).reshape(n_eval, n_samples)
         r_dx = self.corr_dx(x, X=self.X, r=r).T
+        alpha, total_var = self._signal_ratio()
+        r, r_dx = alpha * r, alpha * r_dx
 
         # gradient of the posterior mean
         y_dx = dot(self.mean.beta.T, f_dx) + self.gamma.T.dot(r_dx)
@@ -572,7 +590,7 @@ class GaussianProcess(BaseEstimator, RegressorMixin):
             Ft2inv = linalg.inv(dot(self.Ft.T, self.Ft))
             mse_dx += u.T.dot(Ft2inv).dot(u_dx)
 
-        mse_dx = 2.0 * self.sigma2 * mse_dx
+        mse_dx = 2.0 * total_var * mse_dx
         return y_dx.T, mse_dx.T
 
     def Hessian(self, x):
@@ -593,7 +611,7 @@ class GaussianProcess(BaseEstimator, RegressorMixin):
         # The Hessian tensor of the correlation
         d = l1_cross_distances(x, Y=self.X)
         r = self.corr(self.theta_, d).reshape(n_eval, n_samples)
-        r_dx2 = self.corr_Hessian(x, X=self.X, r=r)
+        r_dx2 = self._signal_ratio()[0] * self.corr_Hessian(x, X=self.X, r=r)
 
         return (f_dx2.dot(self.mean.beta) + r_dx2.dot(self.gamma))[..., 0]
 
